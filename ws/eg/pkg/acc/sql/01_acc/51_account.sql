@@ -185,7 +185,12 @@ $_$
         ;
       ELSE
         -- TODO: журналировать потенциальный подбор пароля через cache
-        RAISE EXCEPTION '%', ws.error_str(acc.const_error_password(), a_login::text);
+        v_id := NEXTVAL('acc.sign_log_id_seq');
+        INSERT INTO acc.sign_log (id, login,  ip)
+          VALUES (v_id, a_login,  a__ip)
+        ; 
+         perform acc.block_login(a_login);  
+        --RAISE EXCEPTION '%', ws.error_str(acc.const_error_password(), a_login::text);
       END IF;
     ELSE
       RAISE EXCEPTION '%', ws.error_str(acc.const_error_login(), a_login::text);
@@ -454,3 +459,73 @@ $_$;
 SELECT pg_c('f', 'account_password_change_own', 'Смена пароля пользователя с запросом пароля');
 
 /* ------------------------------------------------------------------------- */
+CREATE OR REPLACE FUNCTION block_login(a_login TEXT)  RETURNS text VOLATILE LANGUAGE 'plpgsql' AS
+$_$
+DECLARE 
+    cnt2 bigint default 0;
+    v_id INTEGER;
+    v2_id INTEGER;
+    new_id INTEGER;
+    sum_sec integer;
+    sum_sec2 integer;
+    v_name text;
+    rc record;
+    dz interval;
+BEGIN
+    select into rc a.def_value::int       as pac,
+                   b.def_value||' minute' as pai ,
+                   c.def_value::int       as pli
+    from cfg.prop a,
+         cfg.prop b,
+         cfg.prop c 
+    where a.code like 'isv.password_attempt_count'    and 
+          b.code like 'isv.password_attempt_interval' and 
+          c.code like 'isv.password_lock_interval'    ;
+    SELECT into cnt2 count(login) AS cnt
+    FROM   acc.sign_log
+    WHERE  try_at BETWEEN current_timestamp - rc.pai::interval
+                  AND     current_timestamp 
+    GROUP BY login 
+    having login like $1;
+    --raise info 'cnt2= %', cnt2;
+    if cnt2>rc.pac then
+       new_id := NEXTVAL('wsd.event_seq'); 
+       v_id := NEXTVAL('wsd.event_reason_seq');
+       SELECT INTO v2_id id FROM wsd.account WHERE login like $1; 
+       SELECT INTO v_name name FROM ev.kind WHERE id=4; 
+       update wsd.account set status_id=2 where login like $1; 
+       dz:=current_timestamp-CURRENT_DATE;
+       raise info 'cnt2= %', dz;
+       select into sum_sec2 EXTRACT(EPOCH FROM dz)::int;
+       raise info 'cnt2= %', sum_sec2;
+       sum_sec:=sum_sec2+60*rc.pli;
+       update job.handler set def_prio=sum_sec where code like 'unlock_login';
+       PERFORM ev.create(4,new_id, v_id, a_arg_id := v2_id, a_arg_name := v_name );
+       PERFORM job.create( job.handler_id('acc.unlock_login'), null, v2_id,CURRENT_DATE, v_id );
+    end if; 
+    RETURN 'ok ';
+END;
+$_$;
+
+SELECT ws.pg_c('f', 'block_login', 'Блокировка пользователя');
+
+
+/* ------------------------------------------------------------------------- */
+CREATE OR REPLACE FUNCTION unlock_login (a_id integer)
+  RETURNS INTEGER VOLATILE LANGUAGE 'plpgsql' AS
+$_$
+  DECLARE
+    r           wsd.job%ROWTYPE;
+  BEGIN
+    r := job.current(a_id);
+
+    update wsd.account set status_id=1234 where id= r.created_by;
+
+    RETURN job.const_status_id_success();
+  END;
+$_$;
+
+SELECT ws.pg_c('f', 'unlock_login', 'Разблокировка пользователя');
+
+/* ------------------------------------------------------------------------- */
+

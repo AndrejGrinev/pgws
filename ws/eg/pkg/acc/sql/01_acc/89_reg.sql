@@ -157,3 +157,8 @@ INSERT INTO job.handler (id, code, def_prio, arg_date_type, dust_days, is_sql, n
 UPDATE ws.dt_facet
   SET anno='прописные и строчные латинские буквы и цифры'
   WHERE code='acc.d_password';
+
+/* ------------------------------------------------------------------------- */
+INSERT INTO job.handler ( id,pkg, code, def_prio, arg_date_type, dust_days, name) VALUES
+  ( 11,'acc', 'unlock_login',  150, 1,  0, 'Обработка события блокировки пользователя')
+;

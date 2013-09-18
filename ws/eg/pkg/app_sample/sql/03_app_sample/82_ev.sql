@@ -27,6 +27,13 @@ INSERT INTO wsd.event_role_signup (role_id, kind_id, spec_id, is_on) VALUES
 , (9, 3, 0, TRUE) -- этот вид позволяет задать spec_id - ID пользователя
 ;
 
+/* ------------------------------------------------------------------------- */
+INSERT INTO wsd.event_role_signup (role_id, kind_id, spec_id, is_on) VALUES 
+   (3, 4, 0, TRUE)
+, (9, 4, 0, TRUE)
+;
+
+
 /* Настройки подписок EV*/
 INSERT INTO  wsd.event_signup (account_id, role_id, kind_id, spec_id, is_on, prio) values 
   (8, 8, 2, 0, false, 1) -- user 8 отменил подписку

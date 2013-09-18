@@ -39,3 +39,11 @@ INSERT INTO cfg.prop (code, pogc_list, def_value, name, anno, has_log) VALUES
 , ('object.promo',    ARRAY[:AG,:TG],   '',    'Промо-объект',            'Является автоматически сгенерированным промо-объектом', FALSE)
 ;
 
+
+/* ------------------------------------------------------------------------- */
+INSERT INTO cfg.prop (code,pkg, pogc_list, def_value, name,  anno, has_log) VALUES
+  ('isv.password_attempt_count',:AG,  ARRAY[:AG,:TG],   '3', 'кол-во попыток ввода пароля',       '', FALSE)
+, ('isv.password_attempt_interval',:AG,  ARRAY[:AG,:TG],   '8', 'интервал попыток ввода пароля(в минутах)', '', FALSE)
+, ('isv.password_lock_interval',:AG,    ARRAY[:AG,:TG],   '150',    'интервал блокировки(в минутах)',        '', FALSE)
+;
+

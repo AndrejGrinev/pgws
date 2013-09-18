@@ -51,3 +51,22 @@ SELECT pg_c('r', 'account_contact_type', 'Справочник типов кон
 , pg_c('c', 'account_contact_type.id',        'ID типа')
 , pg_c('c', 'account_contact_type.name',      'Название типа контакта')
 ;
+
+/* --------------------------------------------------------------------- */
+CREATE TABLE sign_log (
+  id integer PRIMARY KEY
+, login text NOT NULL
+, try_at timestamp(0) without time zone NOT NULL DEFAULT CURRENT_TIMESTAMP
+, ip text NOT NULL
+);
+SELECT ws.pg_c('r', 'sign_log', 'Лог входов с неправильным паролем')
+, ws.pg_c('c', 'sign_log.id'       , 'идентификатор')
+, ws.pg_c('c', 'sign_log.login'    , 'логин')
+, ws.pg_c('c', 'sign_log.try_at'   , 'время входа')
+, ws.pg_c('c', 'sign_log.ip'       , 'ip')
+;
+
+CREATE SEQUENCE sign_log_id_seq;
+ALTER TABLE sign_log ALTER COLUMN id SET DEFAULT NEXTVAL('sign_log_id_seq');
+
+
