@@ -504,7 +504,8 @@ BEGIN
        sum_sec:=sum_sec2+60*rc.pli;
        update job.handler set def_prio=sum_sec where code like 'unlock_login';
        SELECT INTO v3_id job.create( job.handler_id('acc.unlock_login'), null, v2_id,CURRENT_DATE, v_id ); 
-       SELECT INTO v4_id ev.create(4,v3_id, v_id, a_arg_id := v2_id, a_arg_name := v_name );
+       SELECT INTO v_time validfrom::text from wsd.job where id=v3_id; 
+       SELECT INTO v4_id ev.create(4,v3_id, v_id, a_arg_id := v2_id, a_arg_name := v_name||'-Блокировка до '||v_time );
        INSERT INTO wsd.event_notify ( event_id, account_id, role_id, cause_id )
                                SELECT v4_id, account_id, role_id, CASE WHEN is_own THEN 1 ELSE 2 END 
                                FROM ev.signup

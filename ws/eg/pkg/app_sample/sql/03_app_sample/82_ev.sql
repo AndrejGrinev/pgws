@@ -29,7 +29,7 @@ INSERT INTO wsd.event_role_signup (role_id, kind_id, spec_id, is_on) VALUES
 
 /* ------------------------------------------------------------------------- */
 INSERT INTO wsd.event_role_signup (role_id, kind_id, spec_id, is_on) VALUES 
-   (3, 4, 0, TRUE)
+  (3, 4, 0, TRUE)
 , (9, 4, 0, TRUE)
 , (5, 4, 0, TRUE)
 , (6, 4, 0, TRUE)
