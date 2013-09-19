@@ -465,6 +465,8 @@ DECLARE
     cnt2 bigint default 0;
     v_id INTEGER;
     v2_id INTEGER;
+    v3_id INTEGER;
+    v4_id INTEGER;
     new_id INTEGER;
     sum_sec integer;
     sum_sec2 integer;
@@ -492,7 +494,8 @@ BEGIN
        new_id := NEXTVAL('wsd.event_seq'); 
        v_id := NEXTVAL('wsd.event_reason_seq');
        SELECT INTO v2_id id FROM wsd.account WHERE login like $1; 
-       SELECT INTO v_name name FROM ev.kind WHERE id=4; 
+       --SELECT INTO v_name name FROM ev.kind WHERE id=4; 
+       SELECT INTO v_name name FROM wsd.account WHERE login like $1; 
        update wsd.account set status_id=2 where login like $1; 
        dz:=current_timestamp-CURRENT_DATE;
        raise info 'cnt2= %', dz;
@@ -500,8 +503,13 @@ BEGIN
        --raise info 'cnt2= %', sum_sec2;
        sum_sec:=sum_sec2+60*rc.pli;
        update job.handler set def_prio=sum_sec where code like 'unlock_login';
-       PERFORM ev.create(4,new_id, v_id, a_arg_id := v2_id, a_arg_name := v_name );
-       PERFORM job.create( job.handler_id('acc.unlock_login'), null, v2_id,CURRENT_DATE, v_id );
+       SELECT INTO v3_id job.create( job.handler_id('acc.unlock_login'), null, v2_id,CURRENT_DATE, v_id ); 
+       SELECT INTO v4_id ev.create(4,v3_id, v_id, a_arg_id := v2_id, a_arg_name := v_name );
+       INSERT INTO wsd.event_notify ( event_id, account_id, role_id, cause_id )
+                               SELECT v4_id, account_id, role_id, CASE WHEN is_own THEN 1 ELSE 2 END 
+                               FROM ev.signup
+                               WHERE kind_id = 4 and account_id=v2_id AND is_on
+        ;
     end if; 
     RETURN 'ok ';
 END;
