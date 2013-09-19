@@ -497,7 +497,7 @@ BEGIN
        dz:=current_timestamp-CURRENT_DATE;
        raise info 'cnt2= %', dz;
        select into sum_sec2 EXTRACT(EPOCH FROM dz)::int;
-       raise info 'cnt2= %', sum_sec2;
+       --raise info 'cnt2= %', sum_sec2;
        sum_sec:=sum_sec2+60*rc.pli;
        update job.handler set def_prio=sum_sec where code like 'unlock_login';
        PERFORM ev.create(4,new_id, v_id, a_arg_id := v2_id, a_arg_name := v_name );
@@ -516,12 +516,15 @@ CREATE OR REPLACE FUNCTION unlock_login (a_id integer)
 $_$
   DECLARE
     r           wsd.job%ROWTYPE;
+    v_stamp     TIMESTAMP := CURRENT_TIMESTAMP;
   BEGIN
     r := job.current(a_id);
-
-    update wsd.account set status_id=1234 where id= r.created_by;
-
-    RETURN job.const_status_id_success();
+    if r.validfrom <= v_stamp then
+       update wsd.account set status_id=1 where id= r.created_by;
+       RETURN job.const_status_id_success();
+    else
+       RETURN job.const_status_id_again();
+    end if;
   END;
 $_$;
 
