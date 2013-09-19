@@ -485,8 +485,8 @@ BEGIN
           c.code like 'isv.password_lock_interval'    ;
     SELECT into cnt2 count(login) AS cnt
     FROM   acc.sign_log
-    WHERE  try_at BETWEEN current_timestamp - rc.pai::interval
-                  AND     current_timestamp 
+    WHERE  try_at BETWEEN current_timestamp(0) - rc.pai::interval
+                  AND     current_timestamp(0) 
     GROUP BY login 
     having login like $1;
     --raise info 'cnt2= %', cnt2;
