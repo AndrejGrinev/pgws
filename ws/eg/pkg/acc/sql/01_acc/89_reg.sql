@@ -159,6 +159,6 @@ UPDATE ws.dt_facet
   WHERE code='acc.d_password';
 
 /* ------------------------------------------------------------------------- */
-INSERT INTO job.handler ( id,pkg, code, def_prio, arg_date_type, dust_days, name) VALUES
-  ( 11,'acc', 'unlock_login',  150, 1,  0, 'Обработка события блокировки пользователя')
+INSERT INTO job.handler (id, pkg, code, def_prio, arg_date_type, dust_days, name) VALUES
+  (11, 'acc', 'unlock_login', 1, 1, 0, 'Обработка события блокировки пользователя')
 ;

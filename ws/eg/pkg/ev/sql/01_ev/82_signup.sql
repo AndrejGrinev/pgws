@@ -44,8 +44,8 @@ INSERT INTO ev.kind
 
 /* ------------------------------------------------------------------------- */
 INSERT INTO ev.kind 
-  ( id, group_id, class_id, def_prio, tmpl,         form_codes, name, name_fmt,   name_count, has_spec, spec_name, anno,pkg) VALUES
-  ( 4,  1,        :AID,     1, 'account_login_any',   ARRAY[1],   'Блокировка', 'Пользователь %s',  1, TRUE, 'ID пользователя', 'Уведомление о блокировке пользователя','ev')
+  ( id, group_id, class_id, def_prio, tmpl, form_codes, name, name_fmt, name_count, has_spec, spec_name, anno, pkg) VALUES
+  ( 4, 1, :AID, 1, 'account_login_any', ARRAY[1], 'Блокировка', 'Пользователь %s', 1, TRUE, 'ID пользователя', 'Уведомление о блокировке пользователя', 'ev')
 ;
 
 /* ------------------------------------------------------------------------- */
