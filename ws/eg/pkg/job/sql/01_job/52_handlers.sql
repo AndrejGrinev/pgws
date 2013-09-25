@@ -103,3 +103,19 @@ $_$
     END IF;
   END
 $_$;
+
+/* ------------------------------------------------------------------------- */
+CREATE OR REPLACE FUNCTION archive_sign_log (a_id INTEGER) RETURNS INTEGER VOLATILE LANGUAGE 'plpgsql' AS
+$_$
+  -- handler_archive_sign_log - Обработчик архивации sign_log 
+  -- a_id: ID задачи
+  DECLARE
+    r           wsd.job%ROWTYPE;
+  BEGIN
+    r := job.current(a_id);
+    INSERT INTO acc.sign_log_past SELECT * FROM acc.sign_log2past(r.arg_date);
+    RETURN job.const_status_id_success();
+  END
+$_$;
+SELECT ws.pg_c('f', 'archive_sign_log', 'Архивация sign_log');
+

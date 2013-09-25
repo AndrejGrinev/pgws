@@ -160,5 +160,7 @@ UPDATE ws.dt_facet
 
 /* ------------------------------------------------------------------------- */
 INSERT INTO job.handler (id, pkg, code, def_prio, arg_date_type, dust_days, name) VALUES
-  (11, 'acc', 'unlock_login', 1, 1, 0, 'Обработка события блокировки пользователя')
+  (11, 'acc', 'account_set_unblocked', 1, 1, 0, 'Обработка события разблокировки пользователя')
+, (12, 'acc', 'account_set_blocked', 1, 1, 0, 'Обработка события блокировки пользователя')
+, (13, 'job', 'archive_sign_log', 1, 2, 0, 'Архивация sign_log')
 ;

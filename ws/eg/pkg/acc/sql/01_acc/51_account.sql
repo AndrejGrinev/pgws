@@ -135,6 +135,9 @@ $_$
     v_role_id ws.d_id := acc.const_role_id_noteam();  -- значение, если нет команды
     v_key   TEXT;
     v_id    INTEGER;
+    r_prop      RECORD;
+    v_cnt_sgn   BOOLEAN;
+    v_time      TIMESTAMP;
   BEGIN
     SELECT INTO r
       *
@@ -149,7 +152,7 @@ $_$
       END IF;
       
       IF r.status_id=acc.const_status_id_locked() THEN
-        RAISE EXCEPTION '%', ws.error_str(acc.const_error_status(), '-Блокирован-');
+        RAISE NOTICE '%', ws.error_str(acc.const_error_status(), '-Блокирован-');
       ELSE
         -- TODO: контроль IP
         IF r.is_psw_plain AND r.psw = a_psw
@@ -188,11 +191,28 @@ $_$
           ;
         ELSE
           -- TODO: журналировать потенциальный подбор пароля через cache
-          v_id := NEXTVAL('acc.sign_log_id_seq');
-          INSERT INTO acc.sign_log (id, login,  ip)
-            VALUES (v_id, a_login,  a__ip)
-          ; 
-           perform acc.block_login(a_login);
+          INSERT INTO acc.sign_log (login, ip) VALUES (a_login, a__ip); 
+          --Извлекаем настройки
+          SELECT INTO r_prop 
+            a.def_value::INT       AS pac,
+            b.def_value||' minute' AS pai ,
+            c.def_value||' minute' AS pli
+            FROM acc.prop_attr_team_isv(r.id, 'password_attempt_count') a
+               , acc.prop_attr_team_isv(r.id, 'password_attempt_interval') b
+               , acc.prop_attr_team_isv(r.id, 'password_lock_interval') c 
+          ;
+          --Условие выполняется?
+          SELECT INTO v_cnt_sgn count(1) > r_prop.pac 
+            FROM acc.sign_log 
+            WHERE login = a_login 
+              AND try_at > now() - r_prop.pai::INTERVAL
+          ;
+          IF v_cnt_sgn THEN
+            --Создаём задачу блокировки
+            v_id := NEXTVAL('wsd.event_reason_seq');
+            v_time:=CURRENT_TIMESTAMP(0);
+            PERFORM job.create_at(v_time, job.handler_id('acc.account_set_blocked'), 2, r.id, CURRENT_DATE, v_id, a_more:=r_prop.pli );
+          END IF;
        --   RAISE EXCEPTION '%', ws.error_str(acc.const_error_password(), a_login::text);
         END IF;
       END IF;
@@ -461,89 +481,56 @@ $_$;
 SELECT pg_c('f', 'account_password_change_own', 'Смена пароля пользователя с запросом пароля');
 
 /* ------------------------------------------------------------------------- */
-CREATE OR REPLACE FUNCTION block_login(a_login TEXT) RETURNS text VOLATILE LANGUAGE 'plpgsql' AS
-$_$
--- a_login:               логин пользователя
-  DECLARE 
-    cnt_sgn BIGINT DEFAULT 0;
-    v_id INTEGER;
-    v2_id INTEGER;
-    v3_id INTEGER;
-    v4_id INTEGER;
-    sum_sec INTEGER;
-    sum_sec2 INTEGER;
-    v_name TEXT;
-    v_time TEXT;
-    r_prop RECORD;
-    dz INTERVAL;
-  BEGIN
---Извлекаем настройки
-    SELECT INTO r_prop 
-      a.def_value::INT       AS pac,
-      b.def_value||' minute' AS pai ,
-      c.def_value::INT       AS pli
-      FROM cfg.prop a, cfg.prop b, cfg.prop c 
-      WHERE a.code LIKE 'isv.password_attempt_count'    
-        AND b.code LIKE 'isv.password_attempt_interval' 
-        AND c.code LIKE 'isv.password_lock_interval'
-    ;
---Высчитываем количество попыток входа за интервал
-    SELECT INTO cnt_sgn 
-      count(login) AS cnt
-      FROM acc.sign_log
-      WHERE try_at BETWEEN CURRENT_TIMESTAMP(0) - r_prop.pai::INTERVAL
-                   AND     CURRENT_TIMESTAMP(0)
-      GROUP BY login 
-      having login LIKE $1
-    ;
-    IF cnt_sgn>r_prop.pac THEN
---Присваиваем аккаунту статус=блокирован
-      UPDATE wsd.account SET status_id=acc.const_status_id_locked() WHERE login LIKE $1; 
---Высчитываем VALIDFROM для обработчика "unlock_login"
-      dz:=CURRENT_TIMESTAMP-CURRENT_DATE;
-      SELECT INTO sum_sec2 EXTRACT(EPOCH FROM dz)::INT;
-      sum_sec:=sum_sec2+60*r_prop.pli;
-      UPDATE job.handler SET def_prio=sum_sec WHERE code LIKE 'unlock_login';
---Создаём задачу
-      v_id := NEXTVAL('wsd.event_reason_seq');
-      SELECT INTO v2_id id FROM wsd.account WHERE login LIKE $1; 
-      SELECT INTO v3_id job.create( job.handler_id('acc.unlock_login'), null, v2_id,CURRENT_DATE, v_id ); 
---Создаём событие
-      SELECT INTO v_name name FROM wsd.account WHERE login LIKE $1; 
-      SELECT INTO v_time validfrom::TEXT FROM wsd.job WHERE id=v3_id; 
-      SELECT INTO v4_id ev.create(4,v3_id, v_id, a_arg_id := v2_id, a_arg_name := v_name||'-Блокировка до '||v_time );
---Создаём уведомление
-      INSERT INTO wsd.event_notify ( event_id, account_id, role_id, cause_id )
-        SELECT v4_id, account_id, role_id, CASE WHEN is_own THEN 1 ELSE 2 END 
-        FROM ev.signup
-        WHERE kind_id = 4 
-          AND account_id=v2_id
-          AND is_on
-      ;
-    END IF; 
-    RETURN 'ok ';
-  END;
+CREATE OR REPLACE FUNCTION sign_log2past (DATE) RETURNS SETOF acc.sign_log LANGUAGE 'sql' AS
+$_$ -- current2past - Удаление и возврат из acc.sign_log данных для помещения в acc.sign_log_past, валидных до наступления заданной даты
+-- Вызов:
+--   INSERT INTO acc.sign_log_past SELECT * FROM acc.sign_log2past(r_t.arg_date);
+  DELETE FROM acc.sign_log WHERE try_at < ($1 + 1)::timestamp
+  RETURNING acc.sign_log.*
 $_$;
-SELECT ws.pg_c('f', 'block_login', 'Блокировка пользователя');
+SELECT ws.pg_c('f', 'sign_log2past', 'Удаление и возврат из acc.sign_log данных для помещения в acc.sign_log_past');
 
 /* ------------------------------------------------------------------------- */
-CREATE OR REPLACE FUNCTION unlock_login (a_id integer) RETURNS INTEGER VOLATILE LANGUAGE 'plpgsql' AS
+CREATE OR REPLACE FUNCTION account_set_unblocked (a_id INTEGER) RETURNS INTEGER VOLATILE LANGUAGE 'plpgsql' AS
 $_$
+-- handler_account_set_unblocked - обработчик разблокировки пользователя
 -- a_id:      ID Пользователя
   DECLARE
     v_stamp TIMESTAMP := CURRENT_TIMESTAMP;
     r                    wsd.job%ROWTYPE;
   BEGIN
     r := job.current(a_id);
-    IF r.validfrom <= v_stamp THEN
-       UPDATE wsd.account SET 
-         status_id=acc.const_status_id_active() 
-         WHERE id= r.created_by
-       ;
-       RETURN job.const_status_id_success();
-    ELSE
-       RETURN job.const_status_id_again();
-    END IF;
+    UPDATE wsd.account SET status_id=acc.const_status_id_active() WHERE id= r.created_by ;
+    RETURN job.const_status_id_success();
   END;
 $_$;
-SELECT ws.pg_c('f', 'unlock_login', 'Разблокировка пользователя');
+SELECT ws.pg_c('f', 'account_set_unblocked', 'Разблокировка пользователя');
+
+/* ------------------------------------------------------------------------- */
+CREATE OR REPLACE FUNCTION account_set_blocked (a_id INTEGER) RETURNS INTEGER VOLATILE LANGUAGE 'plpgsql' AS
+$_$
+-- handler_account_set_blocked - обработчик блокировки пользователя
+-- a_id:      ID Пользователя
+  DECLARE
+    r           wsd.job%ROWTYPE;
+    v_id        INTEGER;
+    v_name      TEXT;
+    v_time      TIMESTAMP;
+    v_eventid   INTEGER;
+  BEGIN
+    r := job.current(a_id);
+    v_time:=r.validfrom+r.arg_more::INTERVAL;
+    IF v_time>r.validfrom THEN
+--Присваиваем аккаунту статус=блокирован
+      UPDATE wsd.account SET status_id=acc.const_status_id_locked() WHERE id=r.created_by; 
+--Создаём событие
+      v_id := NEXTVAL('wsd.event_reason_seq');
+      SELECT INTO v_name name FROM wsd.account WHERE id=r.created_by; 
+      SELECT INTO v_eventid ev.create(4, r.created_by, v_id, a_arg_id := r.created_by, a_arg_name := v_name||'-Блокировка до '||v_time::TEXT );
+--Создаём задачу
+      PERFORM job.create_at(v_time, job.handler_id('acc.account_set_unblocked'), 9, r.created_by, CURRENT_DATE, v_eventid );
+    END IF;
+    RETURN job.const_status_id_success();
+  END;
+$_$;
+SELECT ws.pg_c('f', 'account_set_blocked', 'Блокировка пользователя');
