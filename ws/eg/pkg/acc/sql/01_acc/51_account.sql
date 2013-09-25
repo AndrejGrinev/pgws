@@ -194,9 +194,9 @@ $_$
           INSERT INTO acc.sign_log (login, ip) VALUES (a_login, a__ip); 
           --Извлекаем настройки
           SELECT INTO r_prop 
-            a.def_value::INT       AS pac,
-            b.def_value||' minute' AS pai ,
-            c.def_value||' minute' AS pli
+            COALESCE(a.value::INT,a.def_value::INT)       AS pac,
+            COALESCE(b.value||' minute',b.def_value||' minute') AS pai ,
+            COALESCE(c.value||' minute',c.def_value||' minute') AS pli
             FROM acc.prop_attr_team_isv(r.id, 'password_attempt_count') a
                , acc.prop_attr_team_isv(r.id, 'password_attempt_interval') b
                , acc.prop_attr_team_isv(r.id, 'password_lock_interval') c 
