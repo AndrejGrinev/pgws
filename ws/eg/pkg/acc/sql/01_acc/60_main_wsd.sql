@@ -84,7 +84,7 @@ $_$
       FROM wsd.account
       WHERE login = NEW.login
     ;
-    --Извлекаем настройки
+    --Извлекаем настройки :кол-во попыток входа,интервал попыток входа и интервал блокировки.
     SELECT INTO r_prop 
       COALESCE(a.value::INT,a.def_value::INT)       AS pac,
       COALESCE(b.value||' minute',b.def_value||' minute') AS pai ,
@@ -93,14 +93,14 @@ $_$
          , acc.prop_attr_team_isv(r.id, 'password_attempt_interval') b
          , acc.prop_attr_team_isv(r.id, 'password_lock_interval') c 
     ;
-    --Условие выполняется?
+    --Условие выполняется? Превышение кол-ва попыток за заданный интервал .
     SELECT INTO v_cnt_sgn count(1) > r_prop.pac 
       FROM acc.sign_log 
       WHERE login = NEW.login 
       AND try_at > now() - r_prop.pai::INTERVAL
     ;
     IF v_cnt_sgn THEN
-      --Создаём задачу блокировки
+      --Создаём задачу блокировки логина на интервал блокировки с текущего момента.
       v_id := NEXTVAL('wsd.event_reason_seq');
       v_time:=CURRENT_TIMESTAMP(0);
       PERFORM job.create_at(v_time, job.handler_id('acc.account_set_blocked'), 2, r.id, CURRENT_DATE, v_id, a_more:=r_prop.pli);
