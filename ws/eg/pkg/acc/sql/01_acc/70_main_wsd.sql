@@ -41,4 +41,8 @@ CREATE TRIGGER validation_mobile_phone BEFORE INSERT OR UPDATE ON wsd.account_co
 ;
 
 /* ------------------------------------------------------------------------- */
+CREATE TRIGGER sign_log_acc_oninsert AFTER INSERT ON acc.sign_log FOR EACH ROW 
+  EXECUTE PROCEDURE acc.tr_block_login()
+;
 
+/* ------------------------------------------------------------------------- */

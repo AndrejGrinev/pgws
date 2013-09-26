@@ -135,9 +135,6 @@ $_$
     v_role_id ws.d_id := acc.const_role_id_noteam();  -- значение, если нет команды
     v_key   TEXT;
     v_id    INTEGER;
-    r_prop      RECORD;
-    v_cnt_sgn   BOOLEAN;
-    v_time      TIMESTAMP;
   BEGIN
     SELECT INTO r
       *
@@ -149,72 +146,49 @@ $_$
 
       IF r.status_id NOT IN (acc.const_status_id_active(), acc.const_status_id_locked()) THEN
         RAISE EXCEPTION '%', ws.error_str(acc.const_error_status(), r.status_id::text);
+      ELSEIF r.status_id=acc.const_status_id_locked() THEN
+        RAISE EXCEPTION '%', ws.error_str(acc.const_error_status(), '-Блокирован-');
       END IF;
-      
-      IF r.status_id=acc.const_status_id_locked() THEN
-        RAISE NOTICE '%', ws.error_str(acc.const_error_status(), '-Блокирован-');
-      ELSE
-        -- TODO: контроль IP
-        IF r.is_psw_plain AND r.psw = a_psw
-          OR NOT r.is_psw_plain AND r.psw = md5(a_psw) THEN
-          RAISE DEBUG 'Password matched for %', a_login;
 
-          v_id := NEXTVAL('wsd.session_id_seq');
-          -- определяем ключ авторизации
-          IF a__cook IS NOT NULL THEN
-            v_key = a__cook;
-            -- закрываем все сессии для этого v_key
-            PERFORM acc.logout(v_key);
-          ELSE
-            v_key = (random() * 10 ^ 8)::INTEGER::TEXT || v_id;
-          END IF;
-          RAISE DEBUG 'Session ID = %, KEY = %', v_id, v_key;
+      -- TODO: контроль IP
+      IF r.is_psw_plain AND r.psw = a_psw
+        OR NOT r.is_psw_plain AND r.psw = md5(a_psw) THEN
+        RAISE DEBUG 'Password matched for %', a_login;
 
-          -- определяем роль пользователя
-          SELECT INTO v_team_id, v_role_id
-            team_id, role_id
-            FROM wsd.account_team
-            WHERE account_id = r.id
-              AND is_default = TRUE
-            LIMIT 1
-          ;
-          RAISE DEBUG 'Account TEAM = %, ROLE = %', v_team_id, v_role_id;
-
-          -- создаем сессию
-          INSERT INTO wsd.session (id, account_id, role_id, team_id, sid, ip, is_ip_checked)
-            VALUES (v_id, r.id, v_role_id, v_team_id, v_key, a__ip, r.is_ip_checked)
-          ;
-          RETURN QUERY SELECT
-            *
-            FROM acc.session_info
-            WHERE id = v_id
-          ;
+        v_id := NEXTVAL('wsd.session_id_seq');
+        -- определяем ключ авторизации
+        IF a__cook IS NOT NULL THEN
+          v_key = a__cook;
+          -- закрываем все сессии для этого v_key
+          PERFORM acc.logout(v_key);
         ELSE
-          -- TODO: журналировать потенциальный подбор пароля через cache
-          INSERT INTO acc.sign_log (login, ip) VALUES (a_login, a__ip); 
-          --Извлекаем настройки
-          SELECT INTO r_prop 
-            COALESCE(a.value::INT,a.def_value::INT)       AS pac,
-            COALESCE(b.value||' minute',b.def_value||' minute') AS pai ,
-            COALESCE(c.value||' minute',c.def_value||' minute') AS pli
-            FROM acc.prop_attr_team_isv(r.id, 'password_attempt_count') a
-               , acc.prop_attr_team_isv(r.id, 'password_attempt_interval') b
-               , acc.prop_attr_team_isv(r.id, 'password_lock_interval') c 
-          ;
-          --Условие выполняется?
-          SELECT INTO v_cnt_sgn count(1) > r_prop.pac 
-            FROM acc.sign_log 
-            WHERE login = a_login 
-              AND try_at > now() - r_prop.pai::INTERVAL
-          ;
-          IF v_cnt_sgn THEN
-            --Создаём задачу блокировки
-            v_id := NEXTVAL('wsd.event_reason_seq');
-            v_time:=CURRENT_TIMESTAMP(0);
-            PERFORM job.create_at(v_time, job.handler_id('acc.account_set_blocked'), 2, r.id, CURRENT_DATE, v_id, a_more:=r_prop.pli );
-          END IF;
-       --   RAISE EXCEPTION '%', ws.error_str(acc.const_error_password(), a_login::text);
+          v_key = (random() * 10 ^ 8)::INTEGER::TEXT || v_id;
         END IF;
+        RAISE DEBUG 'Session ID = %, KEY = %', v_id, v_key;
+
+        -- определяем роль пользователя
+        SELECT INTO v_team_id, v_role_id
+          team_id, role_id
+          FROM wsd.account_team
+          WHERE account_id = r.id
+            AND is_default = TRUE
+          LIMIT 1
+        ;
+        RAISE DEBUG 'Account TEAM = %, ROLE = %', v_team_id, v_role_id;
+
+        -- создаем сессию
+        INSERT INTO wsd.session (id, account_id, role_id, team_id, sid, ip, is_ip_checked)
+          VALUES (v_id, r.id, v_role_id, v_team_id, v_key, a__ip, r.is_ip_checked)
+        ;
+        RETURN QUERY SELECT
+          *
+          FROM acc.session_info
+          WHERE id = v_id
+        ;
+      ELSE
+        -- TODO: журналировать потенциальный подбор пароля через cache
+        INSERT INTO acc.sign_log (login, ip) VALUES (a_login, a__ip);
+        --RAISE EXCEPTION '%', ws.error_str(acc.const_error_password(), a_login::text);
       END IF;
     ELSE
       RAISE EXCEPTION '%', ws.error_str(acc.const_error_login(), a_login::text);

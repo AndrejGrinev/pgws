@@ -69,3 +69,43 @@ $_$
 $_$;
 SELECT pg_c('f', 'validation_phone_trigger', 'Проверка валидности номера телефона');
 
+/* ------------------------------------------------------------------------- */
+CREATE OR REPLACE FUNCTION tr_block_login() RETURNS trigger LANGUAGE 'plpgsql' AS
+$_$
+  DECLARE
+    r           wsd.account;
+    r_prop      RECORD;
+    v_cnt_sgn   BOOLEAN;
+    v_time      TIMESTAMP;
+    v_id        INTEGER;
+  BEGIN
+    SELECT INTO r
+      *
+      FROM wsd.account
+      WHERE login = NEW.login
+    ;
+    --Извлекаем настройки
+    SELECT INTO r_prop 
+      COALESCE(a.value::INT,a.def_value::INT)       AS pac,
+      COALESCE(b.value||' minute',b.def_value||' minute') AS pai ,
+      COALESCE(c.value||' minute',c.def_value||' minute') AS pli
+      FROM acc.prop_attr_team_isv(r.id, 'password_attempt_count') a
+         , acc.prop_attr_team_isv(r.id, 'password_attempt_interval') b
+         , acc.prop_attr_team_isv(r.id, 'password_lock_interval') c 
+    ;
+    --Условие выполняется?
+    SELECT INTO v_cnt_sgn count(1) > r_prop.pac 
+      FROM acc.sign_log 
+      WHERE login = NEW.login 
+      AND try_at > now() - r_prop.pai::INTERVAL
+    ;
+    IF v_cnt_sgn THEN
+      --Создаём задачу блокировки
+      v_id := NEXTVAL('wsd.event_reason_seq');
+      v_time:=CURRENT_TIMESTAMP(0);
+      PERFORM job.create_at(v_time, job.handler_id('acc.account_set_blocked'), 2, r.id, CURRENT_DATE, v_id, a_more:=r_prop.pli);
+    END IF;          
+    RETURN NEW;
+  END;
+$_$;
+SELECT pg_c('f', 'tr_block_login', 'Проверка условия блокировки логина');
