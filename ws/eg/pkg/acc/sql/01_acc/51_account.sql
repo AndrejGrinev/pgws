@@ -527,6 +527,13 @@ $_$
       v_id := NEXTVAL('wsd.event_reason_seq');
       SELECT INTO v_name name FROM wsd.account WHERE id=r.created_by; 
       SELECT INTO v_eventid ev.create(4, r.created_by, v_id, a_arg_id := r.created_by, a_arg_name := v_name||'-Блокировка до '||v_time::TEXT );
+      INSERT INTO wsd.event_notify ( event_id, account_id, role_id, cause_id )
+        SELECT v_eventid, account_id, role_id, CASE WHEN is_own THEN 1 ELSE 2 END 
+          FROM ev.signup
+          WHERE kind_id = 4 
+            AND account_id=r.created_by
+            AND is_on
+      ;
 --Создаём задачу
       PERFORM job.create_at(v_time, job.handler_id('acc.account_set_unblocked'), 9, r.created_by, CURRENT_DATE, v_eventid );
     END IF;
