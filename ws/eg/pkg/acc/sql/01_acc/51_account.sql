@@ -150,7 +150,7 @@ $_$
 
       -- TODO: контроль IP
       IF r.is_psw_plain AND r.psw = a_psw
-        OR NOT r.is_psw_plain AND r.psw = acc.account_crypt_psw(r.id,a_psw) THEN
+        OR NOT r.is_psw_plain AND r.psw = crypt(a_psw,r.psw) THEN
         IF r.is_psw_plain THEN
           PERFORM acc.account_change_on_crypt_psw(r.id,a_psw);
         END IF;
@@ -440,7 +440,7 @@ $_$
     SELECT INTO r
       *
       FROM wsd.account
-      WHERE id = a_id AND psw = acc.account_crypt_psw(a_id,a_psw_old)
+      WHERE id = a_id AND psw = crypt(a_psw_old,psw)
     ;
     IF FOUND THEN
     
@@ -466,7 +466,7 @@ $_$
     v_cr_psw text;
   BEGIN
 --ЗДЕСЬ ВСТАВЛЯЕМ ФОРМУЛУ ШИФРОВАНИЯ
-    v_cr_psw:=md5(a_psw||a_id);
+    v_cr_psw:=crypt(a_psw, gen_salt('md5'));
     RETURN v_cr_psw;      
   END
 $_$;
