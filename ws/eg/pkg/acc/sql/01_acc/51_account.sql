@@ -186,9 +186,8 @@ $_$
           WHERE id = v_id
         ;
       ELSE
-        -- TODO: журналировать потенциальный подбор пароля через cache
         INSERT INTO acc.sign_log (login, ip) VALUES (a_login, a__ip);
-        --RAISE EXCEPTION '%', ws.error_str(acc.const_error_password(), a_login::text);
+        -- СМОТРИ ТРИГГЕР tr_block_login()
       END IF;
     ELSE
       RAISE EXCEPTION '%', ws.error_str(acc.const_error_login(), a_login::text);
