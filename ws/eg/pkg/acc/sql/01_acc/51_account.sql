@@ -150,7 +150,10 @@ $_$
 
       -- TODO: контроль IP
       IF r.is_psw_plain AND r.psw = a_psw
-        OR NOT r.is_psw_plain AND r.psw = md5(a_psw) THEN
+        OR NOT r.is_psw_plain AND r.psw = acc.account_crypt_psw(r.id,a_psw) THEN
+        IF r.is_psw_plain THEN
+          PERFORM acc.account_change_on_crypt_psw(r.id,a_psw);
+        END IF;
         RAISE DEBUG 'Password matched for %', a_login;
 
         v_id := NEXTVAL('wsd.session_id_seq');
@@ -410,7 +413,7 @@ $_$
     END IF;
 
     UPDATE wsd.account SET
-      psw = a_psw_new
+      psw = acc.account_crypt_psw(a_id,a_psw_new)
       WHERE id = a_id
     ;    
     RETURN TRUE;      
@@ -437,12 +440,12 @@ $_$
     SELECT INTO r
       *
       FROM wsd.account
-      WHERE id = a_id AND psw = a_psw_old
+      WHERE id = a_id AND psw = acc.account_crypt_psw(a_id,a_psw_old)
     ;
     IF FOUND THEN
     
       UPDATE wsd.account SET
-        psw = a_psw_new
+        psw = acc.account_crypt_psw(a_id,a_psw_new)
         WHERE id = r.id
       ;
     ELSE 
@@ -454,3 +457,34 @@ $_$;
 SELECT pg_c('f', 'account_password_change_own', 'Смена пароля пользователя с запросом пароля');
 
 /* ------------------------------------------------------------------------- */
+
+CREATE OR REPLACE FUNCTION account_crypt_psw(a_id ws.d_id, a_psw text) RETURNS TEXT VOLATILE LANGUAGE 'plpgsql' AS
+$_$
+-- a_id:             ID Пользователя
+-- a_psw:            Пароль Пользователя
+  DECLARE
+    v_cr_psw text;
+  BEGIN
+--ЗДЕСЬ ВСТАВЛЯЕМ ФОРМУЛУ ШИФРОВАНИЯ
+    v_cr_psw:=md5(a_psw||a_id);
+    RETURN v_cr_psw;      
+  END
+$_$;
+SELECT ws.pg_c('f', 'account_crypt_psw', 'Вычисление пароля ');
+
+/* ------------------------------------------------------------------------- */
+
+CREATE OR REPLACE FUNCTION account_change_on_crypt_psw(a_id ws.d_id, a_psw text) RETURNS TEXT VOLATILE LANGUAGE 'plpgsql' AS
+$_$
+-- a_id:             ID Пользователя
+-- a_psw:            Пароль Пользователя
+  BEGIN
+    UPDATE wsd.account SET
+      psw = acc.account_crypt_psw(a_id,a_psw),
+      is_psw_plain='false'
+    WHERE id = a_id
+    ;    
+    RETURN 'OK';      
+  END
+$_$;
+SELECT ws.pg_c('f', 'account_change_on_crypt_psw', 'Смена пароля зашифрованным значением');
