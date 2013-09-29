@@ -151,9 +151,6 @@ $_$
       -- TODO: контроль IP
       IF r.is_psw_plain AND r.psw = a_psw
         OR NOT r.is_psw_plain AND r.psw = crypt(a_psw,r.psw) THEN
-        IF r.is_psw_plain THEN
-          PERFORM acc.account_change_on_crypt_psw(r.id,a_psw);
-        END IF;
         RAISE DEBUG 'Password matched for %', a_login;
 
         v_id := NEXTVAL('wsd.session_id_seq');
@@ -402,18 +399,27 @@ SELECT ws.pg_c('f', 'account_lookup', 'Поиск пользователя по 
 
 /* ------------------------------------------------------------------------- */
 
-CREATE OR REPLACE FUNCTION account_password_change(a_id ws.d_id, a_psw_new acc.d_password, a_psw_new_repeat acc.d_password) RETURNS BOOLEAN VOLATILE LANGUAGE 'plpgsql' AS
+CREATE OR REPLACE FUNCTION account_password_change(a_id ws.d_id, a_psw_new acc.d_password, a_psw_new_repeat acc.d_password, a_is_psw_plain BOOLEAN DEFAULT FALSE) RETURNS BOOLEAN VOLATILE LANGUAGE 'plpgsql' AS
 $_$
 -- a_id:               ID Пользователя
 -- a_psw_new:          Новый пароль
 -- a_psw_new_repeat:   Повторное значение пароля
+-- a_is_psw_plain:     незашифрован?
+  DECLARE
+    v_new_psw         TEXT;
   BEGIN
     IF a_psw_new != a_psw_new_repeat THEN
       RAISE EXCEPTION '%', ws.error_str(acc.const_error_passwords_match());
     END IF;
+--Шифруем, если флаг=false
+    v_new_psw:= a_psw_new;
+    IF a_is_psw_plain='false' THEN 
+      v_new_psw:= acc.account_crypt_psw(a_psw_new);
+    END IF;
 
     UPDATE wsd.account SET
-      psw = acc.account_crypt_psw(a_id,a_psw_new)
+      psw = v_new_psw,
+      is_psw_plain=a_is_psw_plain
       WHERE id = a_id
     ;    
     RETURN TRUE;      
@@ -423,29 +429,46 @@ SELECT pg_c('f', 'account_password_change', 'Смена пароля польз�
 
 /* ------------------------------------------------------------------------- */
 
-CREATE OR REPLACE FUNCTION account_password_change_own(a_id ws.d_id, a_psw_old d_string, a_psw_new acc.d_password, a_psw_new_repeat acc.d_password) RETURNS BOOLEAN VOLATILE LANGUAGE 'plpgsql' AS
+CREATE OR REPLACE FUNCTION account_password_change_own(a_id ws.d_id, a_psw_old d_string, a_psw_new acc.d_password, a_psw_new_repeat acc.d_password, a_is_psw_plain BOOLEAN DEFAULT FALSE) RETURNS BOOLEAN VOLATILE LANGUAGE 'plpgsql' AS
 $_$
 -- a_id:               ID Пользователя
 -- a_psw_old:          Старый пароль
 -- a_psw_new:          Новый пароль
 -- a_psw_new_repeat:   Повторное значение пароля
+-- a_is_psw_plain:     незашифрован?
   DECLARE
     r wsd.account;
+    rc_account        RECORD;
+    v_new_psw         TEXT;
+    v_old_psw         TEXT;
   BEGIN
 
     IF a_psw_new != a_psw_new_repeat THEN
       RAISE EXCEPTION '%', ws.error_str(acc.const_error_passwords_match());
     END IF;
 
+    SELECT INTO rc_account is_psw_plain,psw FROM wsd.account WHERE id=a_id; 
+--Вычисляем значение старого пароля
+    v_old_psw:= a_psw_old;
+    IF rc_account.is_psw_plain='false' THEN 
+      v_old_psw:= crypt(a_psw_old,rc_account.psw); 
+    END IF;
+
     SELECT INTO r
       *
       FROM wsd.account
-      WHERE id = a_id AND psw = crypt(a_psw_old,psw)
+      WHERE id = a_id AND psw = v_old_psw
     ;
     IF FOUND THEN
-    
+--Шифруем, если флаг=false
+      v_new_psw:= a_psw_new;
+      IF a_is_psw_plain='false' THEN 
+        v_new_psw:= acc.account_crypt_psw(a_psw_new);
+      END IF;
+
       UPDATE wsd.account SET
-        psw = acc.account_crypt_psw(a_id,a_psw_new)
+        psw = v_new_psw,
+        is_psw_plain=a_is_psw_plain
         WHERE id = r.id
       ;
     ELSE 
@@ -458,33 +481,8 @@ SELECT pg_c('f', 'account_password_change_own', 'Смена пароля пол�
 
 /* ------------------------------------------------------------------------- */
 
-CREATE OR REPLACE FUNCTION account_crypt_psw(a_id ws.d_id, a_psw text) RETURNS TEXT VOLATILE LANGUAGE 'plpgsql' AS
+CREATE OR REPLACE FUNCTION acc.account_crypt_psw(a_psw text) RETURNS TEXT IMMUTABLE LANGUAGE 'sql' AS
 $_$
--- a_id:             ID Пользователя
--- a_psw:            Пароль Пользователя
-  DECLARE
-    v_cr_psw text;
-  BEGIN
---ЗДЕСЬ ВСТАВЛЯЕМ ФОРМУЛУ ШИФРОВАНИЯ
-    v_cr_psw:=crypt(a_psw, gen_salt('md5'));
-    RETURN v_cr_psw;      
-  END
+  SELECT * from crypt($1, gen_salt('bf', 10));
 $_$;
-SELECT ws.pg_c('f', 'account_crypt_psw', 'Вычисление пароля ');
-
-/* ------------------------------------------------------------------------- */
-
-CREATE OR REPLACE FUNCTION account_change_on_crypt_psw(a_id ws.d_id, a_psw text) RETURNS TEXT VOLATILE LANGUAGE 'plpgsql' AS
-$_$
--- a_id:             ID Пользователя
--- a_psw:            Пароль Пользователя
-  BEGIN
-    UPDATE wsd.account SET
-      psw = acc.account_crypt_psw(a_id,a_psw),
-      is_psw_plain='false'
-    WHERE id = a_id
-    ;    
-    RETURN 'OK';      
-  END
-$_$;
-SELECT ws.pg_c('f', 'account_change_on_crypt_psw', 'Смена пароля зашифрованным значением');
+SELECT ws.pg_c('f', 'acc.account_crypt_psw', 'Вычисление пароля ');
